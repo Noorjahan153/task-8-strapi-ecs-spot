@@ -18,16 +18,16 @@ data "aws_subnets" "default" {
 }
 
 ############################
-# Security Group
+# Security Group for ALB
 ############################
 
-resource "aws_security_group" "strapi_sg" {
-  name   = "strapi-sg"
+resource "aws_security_group" "noor_alb_sg" {
+  name   = "noor-alb-sg"
   vpc_id = data.aws_vpc.default.id
 
   ingress {
-    from_port   = 1337
-    to_port     = 1337
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -41,27 +41,50 @@ resource "aws_security_group" "strapi_sg" {
 }
 
 ############################
-# ECR Repository
+# Security Group for ECS
 ############################
 
-resource "aws_ecr_repository" "strapi_repo" {
-  name = "strapi-repo"
+resource "aws_security_group" "noor_ecs_sg" {
+  name   = "noor-ecs-sg"
+  vpc_id = data.aws_vpc.default.id
+
+  ingress {
+    from_port       = 1337
+    to_port         = 1337
+    protocol        = "tcp"
+    security_groups = [aws_security_group.noor_alb_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+############################
+# ECR
+############################
+
+resource "aws_ecr_repository" "noor_repo" {
+  name = "noor-strapi-repo"
 }
 
 ############################
 # ECS Cluster
 ############################
 
-resource "aws_ecs_cluster" "strapi_cluster" {
-  name = "strapi-cluster"
+resource "aws_ecs_cluster" "noor_cluster" {
+  name = "noor-strapi-cluster"
 }
 
 ############################
 # IAM Role
 ############################
 
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "ecsTaskExecutionRole-strapi"
+resource "aws_iam_role" "noor_task_execution_role" {
+  name = "noor-ecsTaskExecutionRole"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -75,8 +98,8 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
+resource "aws_iam_role_policy_attachment" "noor_execution_policy" {
+  role       = aws_iam_role.noor_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
@@ -84,18 +107,18 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
 # Task Definition
 ############################
 
-resource "aws_ecs_task_definition" "strapi_task" {
-  family                   = "strapi-task"
+resource "aws_ecs_task_definition" "noor_task" {
+  family                   = "noor-strapi-task"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  execution_role_arn       = aws_iam_role.noor_task_execution_role.arn
 
   container_definitions = jsonencode([
     {
-      name      = "strapi"
-      image     = "${aws_ecr_repository.strapi_repo.repository_url}:latest"
+      name      = "noor-strapi"
+      image     = "${aws_ecr_repository.noor_repo.repository_url}:latest"
       essential = true
 
       portMappings = [
@@ -109,13 +132,43 @@ resource "aws_ecs_task_definition" "strapi_task" {
 }
 
 ############################
-# ECS Service (FARGATE SPOT)
+# ALB
 ############################
 
-resource "aws_ecs_service" "strapi_service" {
-  name            = "strapi-service"
-  cluster         = aws_ecs_cluster.strapi_cluster.id
-  task_definition = aws_ecs_task_definition.strapi_task.arn
+resource "aws_lb" "noor_alb" {
+  name               = "noor-strapi-alb"
+  load_balancer_type = "application"
+  subnets            = data.aws_subnets.default.ids
+  security_groups    = [aws_security_group.noor_alb_sg.id]
+}
+
+resource "aws_lb_target_group" "noor_tg" {
+  name        = "noor-strapi-tg"
+  port        = 1337
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = data.aws_vpc.default.id
+}
+
+resource "aws_lb_listener" "noor_listener" {
+  load_balancer_arn = aws_lb.noor_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.noor_tg.arn
+  }
+}
+
+############################
+# ECS Service (FARGATE_SPOT)
+############################
+
+resource "aws_ecs_service" "noor_service" {
+  name            = "noor-strapi-service"
+  cluster         = aws_ecs_cluster.noor_cluster.id
+  task_definition = aws_ecs_task_definition.noor_task.arn
   desired_count   = 1
 
   capacity_provider_strategy {
@@ -124,12 +177,23 @@ resource "aws_ecs_service" "strapi_service" {
   }
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
-    security_groups  = [aws_security_group.strapi_sg.id]
-    assign_public_ip = true
+    subnets         = data.aws_subnets.default.ids
+    security_groups = [aws_security_group.noor_ecs_sg.id]
   }
 
-  depends_on = [
-    aws_iam_role_policy_attachment.ecs_execution_policy
-  ]
+  load_balancer {
+    target_group_arn = aws_lb_target_group.noor_tg.arn
+    container_name   = "noor-strapi"
+    container_port   = 1337
+  }
+
+  depends_on = [aws_lb_listener.noor_listener]
+}
+
+############################
+# OUTPUT
+############################
+
+output "noor_alb_dns" {
+  value = aws_lb.noor_alb.dns_name
 }
