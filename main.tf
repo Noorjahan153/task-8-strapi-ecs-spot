@@ -1,10 +1,10 @@
 provider "aws" {
-  region = "us-east-1"   # change if needed
+  region = "us-east-1"
 }
 
-########################
+############################
 # Default VPC
-########################
+############################
 
 data "aws_vpc" "default" {
   default = true
@@ -17,9 +17,9 @@ data "aws_subnets" "default" {
   }
 }
 
-########################
+############################
 # Security Group
-########################
+############################
 
 resource "aws_security_group" "strapi_sg" {
   name   = "strapi-sg"
@@ -40,25 +40,25 @@ resource "aws_security_group" "strapi_sg" {
   }
 }
 
-########################
+############################
 # ECR Repository
-########################
+############################
 
 resource "aws_ecr_repository" "strapi_repo" {
   name = "strapi-repo"
 }
 
-########################
+############################
 # ECS Cluster
-########################
+############################
 
 resource "aws_ecs_cluster" "strapi_cluster" {
   name = "strapi-cluster"
 }
 
-########################
+############################
 # IAM Role
-########################
+############################
 
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole-strapi"
@@ -75,14 +75,14 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
+resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-########################
+############################
 # Task Definition
-########################
+############################
 
 resource "aws_ecs_task_definition" "strapi_task" {
   family                   = "strapi-task"
@@ -98,25 +98,25 @@ resource "aws_ecs_task_definition" "strapi_task" {
       image     = "${aws_ecr_repository.strapi_repo.repository_url}:latest"
       essential = true
 
-      portMappings = [{
-        containerPort = 1337
-        hostPort      = 1337
-      }]
+      portMappings = [
+        {
+          containerPort = 1337
+          hostPort      = 1337
+        }
+      ]
     }
   ])
 }
 
-########################
+############################
 # ECS Service (FARGATE SPOT)
-########################
+############################
 
 resource "aws_ecs_service" "strapi_service" {
   name            = "strapi-service"
   cluster         = aws_ecs_cluster.strapi_cluster.id
   task_definition = aws_ecs_task_definition.strapi_task.arn
   desired_count   = 1
-
-  launch_type = "FARGATE"
 
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
@@ -128,4 +128,8 @@ resource "aws_ecs_service" "strapi_service" {
     security_groups  = [aws_security_group.strapi_sg.id]
     assign_public_ip = true
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.ecs_execution_policy
+  ]
 }
