@@ -11,9 +11,6 @@ jobs:
 
     steps:
 
-    #################################
-    # Checkout Code
-    #################################
     - uses: actions/checkout@v3
 
     #################################
@@ -29,43 +26,47 @@ jobs:
     #################################
     # Setup Terraform
     #################################
-    - name: Setup Terraform
+    - name: Terraform Setup
       uses: hashicorp/setup-terraform@v2
 
     - name: Terraform Init
       run: terraform init
 
-    - name: Terraform Apply (CREATE ECR FIRST ⭐)
+    - name: Terraform Apply
       run: terraform apply -auto-approve
 
     #################################
-    # Login to ECR AFTER Terraform ⭐
+    # Wait for AWS Resources ⭐ VERY IMPORTANT
     #################################
-    - name: Login ECR
+    - name: Wait for AWS
+      run: sleep 60
+
+    #################################
+    # Get ECR Repo URL
+    #################################
+    - name: Get Repo URL
       run: |
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        terraform output -raw repo_url > repo.txt
+
+    #################################
+    # Login + Build + Push Image
+    #################################
+    - name: Docker Build + Push
+      run: |
+        REPO_URI=$(cat repo.txt)
 
         aws ecr get-login-password --region us-east-1 | \
         docker login --username AWS --password-stdin \
-        $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-
-    #################################
-    # Build + Push Image
-    #################################
-    - name: Build + Push Docker Image
-      run: |
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
+        $(echo $REPO_URI | cut -d'/' -f1)
 
         docker build -t $REPO_URI:latest .
 
         docker push $REPO_URI:latest
 
     #################################
-    # Force ECS Deploy
+    # Deploy ECS
     #################################
-    - name: Deploy ECS Service
+    - name: Deploy ECS
       run: |
         aws ecs update-service \
         --cluster noor-strapi-final-cluster-v6 \
