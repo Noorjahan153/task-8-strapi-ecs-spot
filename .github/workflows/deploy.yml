@@ -1,4 +1,4 @@
-name: Strapi ECS Deploy
+name: Deploy Strapi ECS
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     - uses: actions/checkout@v3
 
     #################################
-    # Install Dependencies
+    # Install jq
     #################################
     - name: Install jq
       run: sudo apt-get update && sudo apt-get install jq -y
@@ -33,7 +33,7 @@ jobs:
         aws-region: us-east-1
 
     #################################
-    # Terraform Setup
+    # Setup Terraform
     #################################
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
@@ -45,22 +45,24 @@ jobs:
       run: terraform apply -auto-approve
 
     #################################
-    # Get Clean Terraform Output ⭐
+    # Get Repo URI ⭐ Clean Method
     #################################
     - name: Get Repo URI
       run: |
-        REPO_URI=$(terraform output -json repo_uri | jq -r '.value')
+        REPO_URI=$(terraform output -raw repo_uri)
 
         echo "REPO_URI=$REPO_URI" >> $GITHUB_ENV
 
     #################################
-    # Docker Login + Build + Push
+    # Login + Build + Push Image
     #################################
-    - name: Docker Login + Push
+    - name: Docker Login + Build + Push
       run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
         aws ecr get-login-password --region us-east-1 | \
         docker login --username AWS --password-stdin \
-        $(echo $REPO_URI | cut -d'/' -f1)
+        $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 
         docker build -t $REPO_URI:latest .
 
@@ -69,9 +71,9 @@ jobs:
     #################################
     # Deploy ECS
     #################################
-    - name: Deploy ECS Service
+    - name: Deploy ECS
       run: |
         aws ecs update-service \
-        --cluster noor-strapi-final-cluster-v6 \
-        --service noor-strapi-service-v6 \
+        --cluster noor-strapi-final-cluster-dev \
+        --service noor-strapi-service-dev \
         --force-new-deployment
