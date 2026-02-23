@@ -1,9 +1,9 @@
 provider "aws" {
-  region = "us-east-1"
+  region = var.region
 }
 
 ############################
-# Default VPC
+# DEFAULT VPC
 ############################
 
 data "aws_vpc" "default" {
@@ -18,16 +18,17 @@ data "aws_subnets" "default" {
 }
 
 ############################
-# Security Group for ALB
+# SECURITY GROUP
 ############################
 
-resource "aws_security_group" "noor_alb_sg" {
-  name   = "noor-alb-sg"
-  vpc_id = data.aws_vpc.default.id
+resource "aws_security_group" "noor_sg" {
+  name        = "noor-strapi-sg"
+  description = "Allow Strapi traffic"
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = 1337
+    to_port     = 1337
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -41,30 +42,7 @@ resource "aws_security_group" "noor_alb_sg" {
 }
 
 ############################
-# Security Group for ECS
-############################
-
-resource "aws_security_group" "noor_ecs_sg" {
-  name   = "noor-ecs-sg"
-  vpc_id = data.aws_vpc.default.id
-
-  ingress {
-    from_port       = 1337
-    to_port         = 1337
-    protocol        = "tcp"
-    security_groups = [aws_security_group.noor_alb_sg.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-############################
-# ECR
+# ECR REPOSITORY
 ############################
 
 resource "aws_ecr_repository" "noor_repo" {
@@ -72,7 +50,7 @@ resource "aws_ecr_repository" "noor_repo" {
 }
 
 ############################
-# ECS Cluster
+# ECS CLUSTER
 ############################
 
 resource "aws_ecs_cluster" "noor_cluster" {
@@ -80,10 +58,10 @@ resource "aws_ecs_cluster" "noor_cluster" {
 }
 
 ############################
-# IAM Role
+# IAM ROLE
 ############################
 
-resource "aws_iam_role" "noor_task_execution_role" {
+resource "aws_iam_role" "noor_execution_role" {
   name = "noor-ecsTaskExecutionRole"
 
   assume_role_policy = jsonencode({
@@ -99,12 +77,12 @@ resource "aws_iam_role" "noor_task_execution_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "noor_execution_policy" {
-  role       = aws_iam_role.noor_task_execution_role.name
+  role       = aws_iam_role.noor_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 ############################
-# Task Definition
+# TASK DEFINITION
 ############################
 
 resource "aws_ecs_task_definition" "noor_task" {
@@ -113,7 +91,7 @@ resource "aws_ecs_task_definition" "noor_task" {
   network_mode             = "awsvpc"
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = aws_iam_role.noor_task_execution_role.arn
+  execution_role_arn       = aws_iam_role.noor_execution_role.arn
 
   container_definitions = jsonencode([
     {
@@ -125,6 +103,7 @@ resource "aws_ecs_task_definition" "noor_task" {
         {
           containerPort = 1337
           hostPort      = 1337
+          protocol      = "tcp"
         }
       ]
     }
@@ -132,37 +111,7 @@ resource "aws_ecs_task_definition" "noor_task" {
 }
 
 ############################
-# ALB
-############################
-
-resource "aws_lb" "noor_alb" {
-  name               = "noor-strapi-alb"
-  load_balancer_type = "application"
-  subnets            = data.aws_subnets.default.ids
-  security_groups    = [aws_security_group.noor_alb_sg.id]
-}
-
-resource "aws_lb_target_group" "noor_tg" {
-  name        = "noor-strapi-tg"
-  port        = 1337
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = data.aws_vpc.default.id
-}
-
-resource "aws_lb_listener" "noor_listener" {
-  load_balancer_arn = aws_lb.noor_alb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.noor_tg.arn
-  }
-}
-
-############################
-# ECS Service (FARGATE_SPOT)
+# ECS SERVICE (FARGATE SPOT)
 ############################
 
 resource "aws_ecs_service" "noor_service" {
@@ -177,23 +126,12 @@ resource "aws_ecs_service" "noor_service" {
   }
 
   network_configuration {
-    subnets         = data.aws_subnets.default.ids
-    security_groups = [aws_security_group.noor_ecs_sg.id]
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.noor_sg.id]
+    assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.noor_tg.arn
-    container_name   = "noor-strapi"
-    container_port   = 1337
-  }
-
-  depends_on = [aws_lb_listener.noor_listener]
-}
-
-############################
-# OUTPUT
-############################
-
-output "noor_alb_dns" {
-  value = aws_lb.noor_alb.dns_name
+  depends_on = [
+    aws_iam_role_policy_attachment.noor_execution_policy
+  ]
 }
