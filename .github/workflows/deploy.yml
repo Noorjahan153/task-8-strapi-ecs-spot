@@ -1,4 +1,4 @@
-name: Deploy Strapi ECS
+name: Strapi ECS Deployment
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
     #################################
     # Setup Terraform
     #################################
-    - name: Terraform Setup
+    - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
 
     - name: Terraform Init
@@ -36,22 +36,22 @@ jobs:
       run: terraform apply -auto-approve
 
     #################################
-    # Wait for AWS Resources ⭐ VERY IMPORTANT
+    # Wait For AWS Resources ⭐ VERY IMPORTANT
     #################################
-    - name: Wait for AWS
+    - name: Wait
       run: sleep 60
 
     #################################
-    # Get ECR Repo URL
+    # Get Terraform Output
     #################################
     - name: Get Repo URL
       run: |
-        terraform output -raw repo_url > repo.txt
+        terraform output repo_url > repo.txt
 
     #################################
-    # Login + Build + Push Image
+    # Docker Login + Build + Push
     #################################
-    - name: Docker Build + Push
+    - name: Build and Push Image
       run: |
         REPO_URI=$(cat repo.txt)
 
@@ -66,7 +66,7 @@ jobs:
     #################################
     # Deploy ECS
     #################################
-    - name: Deploy ECS
+    - name: Deploy ECS Service
       run: |
         aws ecs update-service \
         --cluster noor-strapi-final-cluster-v6 \
