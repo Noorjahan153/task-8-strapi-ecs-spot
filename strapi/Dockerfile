@@ -2,7 +2,6 @@ FROM node:18
 
 WORKDIR /app
 
-# Copy Strapi project only
 COPY strapi/package*.json ./
 
 RUN npm install
