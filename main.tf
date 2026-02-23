@@ -7,27 +7,14 @@ provider "aws" {
 }
 
 #################################
-# DEFAULT VPC + SUBNETS
-#################################
-
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "subnets" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
-#################################
 # SECURITY GROUP
 #################################
 
 resource "aws_security_group" "sg" {
   name   = "noor-strapi-final-sg-dev"
-  vpc_id = data.aws_vpc.default.id
+
+  # Default VPC will be automatically used by AWS service
+  vpc_id = "vpc-xxxxxxxx"   # ⭐ Put your default VPC ID from AWS Console
 
   ingress {
     from_port   = 1337
@@ -67,6 +54,7 @@ resource "aws_ecs_cluster" "cluster" {
 #################################
 
 resource "aws_ecs_task_definition" "task" {
+
   family                   = "noor-strapi-task-dev"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -94,10 +82,11 @@ resource "aws_ecs_task_definition" "task" {
 }
 
 #################################
-# ECS SERVICE (FARGATE SPOT)
+# ECS SERVICE
 #################################
 
 resource "aws_ecs_service" "service" {
+
   name            = "noor-strapi-service-dev"
   cluster         = aws_ecs_cluster.cluster.id
   task_definition = aws_ecs_task_definition.task.arn
@@ -108,17 +97,20 @@ resource "aws_ecs_service" "service" {
     weight            = 1
   }
 
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 200
-
   network_configuration {
-    subnets          = data.aws_subnets.subnets.ids
-    security_groups  = [aws_security_group.sg.id]
+
+    subnets = [
+      "subnet-xxxxxx",   # ⭐ Put 2 default public subnet IDs
+      "subnet-yyyyyy"
+    ]
+
+    security_groups = [
+      aws_security_group.sg.id
+    ]
+
     assign_public_ip = true
   }
 
-  depends_on = [
-    aws_ecs_cluster.cluster,
-    aws_ecr_repository.repo
-  ]
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
 }
