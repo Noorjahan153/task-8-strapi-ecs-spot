@@ -50,6 +50,8 @@ resource "aws_security_group" "sg" {
 
 resource "aws_ecr_repository" "repo" {
   name = "noor-strapi-final-repo-dev"
+
+  force_delete = true
 }
 
 #################################
@@ -61,7 +63,7 @@ resource "aws_ecs_cluster" "cluster" {
 }
 
 #################################
-# TASK DEFINITION (USE PROVIDED ROLE ONLY ⭐)
+# TASK DEFINITION
 #################################
 
 resource "aws_ecs_task_definition" "task" {
@@ -77,12 +79,14 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([
     {
-      name  = "strapi"
-      image = "${aws_ecr_repository.repo.repository_url}:latest"
+      name      = "strapi"
+      image     = "${aws_ecr_repository.repo.repository_url}:latest"
+      essential = true
 
       portMappings = [
         {
           containerPort = 1337
+          protocol      = "tcp"
         }
       ]
     }
@@ -104,6 +108,9 @@ resource "aws_ecs_service" "service" {
     weight            = 1
   }
 
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = data.aws_subnets.subnets.ids
     security_groups  = [aws_security_group.sg.id]
@@ -111,6 +118,7 @@ resource "aws_ecs_service" "service" {
   }
 
   depends_on = [
-    aws_ecs_cluster.cluster
+    aws_ecs_cluster.cluster,
+    aws_ecr_repository.repo
   ]
 }
