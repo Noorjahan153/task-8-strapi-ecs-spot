@@ -1,3 +1,3 @@
-output "how_to_access" {
-  value = "Go to ECS → noor-strapi-cluster → Tasks → Copy Public IP → http://PUBLIC-IP:1337"
+output "ecr_repository_url" {
+  value = aws_ecr_repository.repo.repository_url
 }
