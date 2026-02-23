@@ -1,4 +1,4 @@
-name: Strapi ECS Deployment
+name: Deploy Strapi ECS
 
 on:
   push:
@@ -13,19 +13,13 @@ jobs:
 
     - uses: actions/checkout@v3
 
-    #################################
-    # AWS Credentials
-    #################################
-    - name: Configure AWS
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
 
-    #################################
-    # Setup Terraform
-    #################################
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
 
@@ -35,26 +29,15 @@ jobs:
     - name: Terraform Apply
       run: terraform apply -auto-approve
 
-    #################################
-    # Wait For AWS Resources ⭐ VERY IMPORTANT
-    #################################
-    - name: Wait
+    - name: Wait for AWS Resources
       run: sleep 60
 
-    #################################
-    # Get Terraform Output
-    #################################
     - name: Get Repo URL
       run: |
-        terraform output repo_url > repo.txt
+        echo "REPO_URI=$(terraform output -raw repo_url)" >> $GITHUB_ENV
 
-    #################################
-    # Docker Login + Build + Push
-    #################################
-    - name: Build and Push Image
+    - name: Login + Build + Push Docker Image
       run: |
-        REPO_URI=$(cat repo.txt)
-
         aws ecr get-login-password --region us-east-1 | \
         docker login --username AWS --password-stdin \
         $(echo $REPO_URI | cut -d'/' -f1)
@@ -63,10 +46,7 @@ jobs:
 
         docker push $REPO_URI:latest
 
-    #################################
-    # Deploy ECS
-    #################################
-    - name: Deploy ECS Service
+    - name: Deploy ECS
       run: |
         aws ecs update-service \
         --cluster noor-strapi-final-cluster-v6 \
