@@ -10,34 +10,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+    #################################
+    # Checkout Code
+    #################################
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v2
+    #################################
+    # Configure AWS Credentials (Use GitHub Secrets)
+    #################################
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
 
-      - name: Terraform Init
-        run: terraform init
+    #################################
+    # Setup Terraform
+    #################################
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+    - name: Terraform Init
+      run: terraform init
 
-      - name: Login to ECR
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/strapi-repo
-          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $REPO_URI
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
 
-      - name: Build and Push Docker Image
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/strapi-repo
-          docker build -t $REPO_URI:latest .
-          docker push $REPO_URI:latest
+    #################################
+    # Login to ECR (Dynamic ⭐)
+    #################################
+    - name: Login to Amazon ECR
+      run: |
+        aws ecr get-login-password --region us-east-1 | \
+        docker login --username AWS --password-stdin \
+        $(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com
+
+    #################################
+    # Build + Push Docker Image
+    #################################
+    - name: Build and Push Image
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
+
+        docker build -t $REPO_URI:latest .
+
+        docker push $REPO_URI:latest
+
+    #################################
+    # Force ECS Redeploy
+    #################################
+    - name: Restart ECS Service
+      run: |
+        aws ecs update-service \
+        --cluster noor-strapi-final-cluster-v6 \
+        --service noor-strapi-service-v6 \
+        --force-new-deployment
