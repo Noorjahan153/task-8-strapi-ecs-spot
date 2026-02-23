@@ -1,7 +1,11 @@
-output "ecr_repository_url" {
-  value = aws_ecr_repository.strapi_repo.repository_url
+output "noor_ecr_repository_url" {
+  value = aws_ecr_repository.noor_repo.repository_url
 }
 
-output "cluster_name" {
-  value = aws_ecs_cluster.strapi_cluster.name
+output "noor_cluster_name" {
+  value = aws_ecs_cluster.noor_cluster.name
+}
+
+output "noor_alb_dns" {
+  value = aws_lb.noor_alb.dns_name
 }
