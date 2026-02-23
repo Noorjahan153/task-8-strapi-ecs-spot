@@ -1,3 +1,3 @@
-output "ecr_repository_url" {
+output "repo_uri" {
   value = aws_ecr_repository.repo.repository_url
 }
