@@ -2,10 +2,12 @@ FROM node:18
 
 WORKDIR /app
 
-RUN npx create-strapi-app@latest my-app --quickstart
+COPY . .
 
-WORKDIR /app/my-app
+RUN npm install
+
+RUN npm run build
 
 EXPOSE 1337
 
-CMD ["npm", "run", "develop"]
+CMD ["npm","run","develop"]
