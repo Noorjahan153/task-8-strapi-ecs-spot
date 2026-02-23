@@ -1,4 +1,4 @@
-name: Deploy Strapi ECS
+name: Build Image First Then Deploy Infra
 
 on:
   push:
@@ -6,20 +6,59 @@ on:
       - main
 
 jobs:
-  deploy:
+  build_and_deploy:
     runs-on: ubuntu-latest
 
     steps:
 
+    #################################
+    # Checkout Code
+    #################################
     - uses: actions/checkout@v3
 
-    - name: Configure AWS Credentials
+    #################################
+    # AWS Credentials
+    #################################
+    - name: Configure AWS
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
 
+    #################################
+    # Setup Docker
+    #################################
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v2
+
+    #################################
+    # Login to ECR
+    #################################
+    - name: Login ECR
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+        aws ecr get-login-password --region us-east-1 | \
+        docker login --username AWS --password-stdin \
+        $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+    #################################
+    # Build Image FIRST ⭐
+    #################################
+    - name: Build Image
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
+
+        docker build -t $REPO_URI:latest .
+
+        docker push $REPO_URI:latest
+
+    #################################
+    # Terraform Apply SECOND ⭐
+    #################################
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
 
@@ -29,24 +68,10 @@ jobs:
     - name: Terraform Apply
       run: terraform apply -auto-approve
 
-    - name: Wait for AWS Resources
-      run: sleep 60
-
-    - name: Get Repo URL
-      run: |
-        echo "REPO_URI=$(terraform output -raw repo_url)" >> $GITHUB_ENV
-
-    - name: Login + Build + Push Docker Image
-      run: |
-        aws ecr get-login-password --region us-east-1 | \
-        docker login --username AWS --password-stdin \
-        $(echo $REPO_URI | cut -d'/' -f1)
-
-        docker build -t $REPO_URI:latest .
-
-        docker push $REPO_URI:latest
-
-    - name: Deploy ECS
+    #################################
+    # Deploy ECS Service
+    #################################
+    - name: Force ECS Deployment
       run: |
         aws ecs update-service \
         --cluster noor-strapi-final-cluster-v6 \
