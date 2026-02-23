@@ -1,4 +1,4 @@
-name: Strapi ECS Deploy Pipeline
+name: Deploy Strapi ECS
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,13 +14,12 @@ jobs:
     #################################
     # Checkout Code
     #################################
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
     #################################
     # AWS Credentials
     #################################
-    - name: Configure AWS Credentials
+    - name: Configure AWS
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -28,44 +27,7 @@ jobs:
         aws-region: us-east-1
 
     #################################
-    # Setup Docker
-    #################################
-    - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
-    #################################
-    # Login to ECR
-    #################################
-    - name: Login to Amazon ECR
-      run: |
-        aws ecr get-login-password --region us-east-1 | \
-        docker login --username AWS --password-stdin \
-        $(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com
-
-    #################################
-    # Build Docker Image
-    #################################
-    - name: Build Docker Image
-      run: |
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
-
-        docker build -t $REPO_URI:latest .
-
-    #################################
-    # Push Docker Image
-    #################################
-    - name: Push Docker Image
-      run: |
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
-
-        docker push $REPO_URI:latest
-
-    #################################
-    # Terraform Deploy Infrastructure
+    # Setup Terraform
     #################################
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
@@ -73,13 +35,37 @@ jobs:
     - name: Terraform Init
       run: terraform init
 
-    - name: Terraform Apply
+    - name: Terraform Apply (CREATE ECR FIRST ⭐)
       run: terraform apply -auto-approve
 
     #################################
-    # Force ECS Deployment
+    # Login to ECR AFTER Terraform ⭐
     #################################
-    - name: Restart ECS Service
+    - name: Login ECR
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+        aws ecr get-login-password --region us-east-1 | \
+        docker login --username AWS --password-stdin \
+        $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+    #################################
+    # Build + Push Image
+    #################################
+    - name: Build + Push Docker Image
+      run: |
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+        REPO_URI=$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/noor-strapi-final-repo-v6
+
+        docker build -t $REPO_URI:latest .
+
+        docker push $REPO_URI:latest
+
+    #################################
+    # Force ECS Deploy
+    #################################
+    - name: Deploy ECS Service
       run: |
         aws ecs update-service \
         --cluster noor-strapi-final-cluster-v6 \
