@@ -80,7 +80,7 @@ resource "aws_ecs_task_definition" "task" {
 }
 
 #################################
-# ECS SERVICE (FARGATE SPOT)
+# ECS SERVICE
 #################################
 
 resource "aws_ecs_service" "service" {
@@ -95,14 +95,11 @@ resource "aws_ecs_service" "service" {
     weight            = 1
   }
 
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 200
-
   network_configuration {
 
     subnets = [
-      "PUT_PUBLIC_SUBNET_1",
-      "PUT_PUBLIC_SUBNET_2"
+      "subnet-0cc23dc8400d81bf3",
+      "subnet-00efaeabe6a244f6f"
     ]
 
     security_groups = [
@@ -112,4 +109,6 @@ resource "aws_ecs_service" "service" {
     assign_public_ip = true
   }
 
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
 }
