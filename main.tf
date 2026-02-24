@@ -7,24 +7,13 @@ provider "aws" {
 }
 
 #################################
-# DATA → DEFAULT SUBNETS (SAFE IF PERMISSION ALLOWS)
-#################################
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "default-for-az"
-    values = ["true"]
-  }
-}
-
-#################################
 # SECURITY GROUP
 #################################
 
 resource "aws_security_group" "sg" {
   name   = "noor-strapi-final-sg-dev"
 
-  vpc_id = "PUT-YOUR-DEFAULT-VPC-ID-FROM-CONSOLE"
+  vpc_id = "vpc-0778ad9a2069279fc"
 
   ingress {
     from_port   = 1337
@@ -42,11 +31,12 @@ resource "aws_security_group" "sg" {
 }
 
 #################################
-# ECR
+# ECR REPOSITORY
 #################################
 
 resource "aws_ecr_repository" "repo" {
   name = "noor-strapi-final-repo-dev"
+
   force_delete = true
 }
 
@@ -90,7 +80,7 @@ resource "aws_ecs_task_definition" "task" {
 }
 
 #################################
-# ECS SERVICE
+# ECS SERVICE (FARGATE SPOT)
 #################################
 
 resource "aws_ecs_service" "service" {
@@ -105,11 +95,14 @@ resource "aws_ecs_service" "service" {
     weight            = 1
   }
 
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
   network_configuration {
 
     subnets = [
-      "PUT-PUBLIC-SUBNET-1",
-      "PUT-PUBLIC-SUBNET-2"
+      "PUT_PUBLIC_SUBNET_1",
+      "PUT_PUBLIC_SUBNET_2"
     ]
 
     security_groups = [
@@ -119,6 +112,4 @@ resource "aws_ecs_service" "service" {
     assign_public_ip = true
   }
 
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 200
 }
