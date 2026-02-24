@@ -7,14 +7,24 @@ provider "aws" {
 }
 
 #################################
+# DATA → DEFAULT SUBNETS (SAFE IF PERMISSION ALLOWS)
+#################################
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
+  }
+}
+
+#################################
 # SECURITY GROUP
 #################################
 
 resource "aws_security_group" "sg" {
   name   = "noor-strapi-final-sg-dev"
 
-  # Default VPC will be automatically used by AWS service
-  vpc_id = "vpc-xxxxxxxx"   # ⭐ Put your default VPC ID from AWS Console
+  vpc_id = "PUT-YOUR-DEFAULT-VPC-ID-FROM-CONSOLE"
 
   ingress {
     from_port   = 1337
@@ -32,12 +42,11 @@ resource "aws_security_group" "sg" {
 }
 
 #################################
-# ECR REPOSITORY
+# ECR
 #################################
 
 resource "aws_ecr_repository" "repo" {
   name = "noor-strapi-final-repo-dev"
-
   force_delete = true
 }
 
@@ -74,7 +83,6 @@ resource "aws_ecs_task_definition" "task" {
       portMappings = [
         {
           containerPort = 1337
-          protocol      = "tcp"
         }
       ]
     }
@@ -100,8 +108,8 @@ resource "aws_ecs_service" "service" {
   network_configuration {
 
     subnets = [
-      "subnet-xxxxxx",   # ⭐ Put 2 default public subnet IDs
-      "subnet-yyyyyy"
+      "PUT-PUBLIC-SUBNET-1",
+      "PUT-PUBLIC-SUBNET-2"
     ]
 
     security_groups = [
